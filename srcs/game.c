@@ -19,6 +19,7 @@ static struct game_state *game = NULL;
 static int *team_members[MAX_TEAMS] = {NULL};
 static int shm_matrix_id;
 static int *shared_matrix;
+static int my_position[2];
 #define MATRIX(row, col) (shared_matrix[(row) * WIDTH + (col)])
 
 static void lock_semaphore()
@@ -76,15 +77,16 @@ void init_shared_matrix()
 
 int update_matrix_element(int row, int col, int value)
 {
+    if (row < 0 || row >= HEIGHT || col < 0 || col >= WIDTH)
+    {
+        return -1;
+    }
     if (MATRIX(row, col) != 0)
     {
-        printf("Matrix[%d][%d] is already occupied.\n", row, col);
         return -1;
     } 
-    printf("Matrix value: %d\n", MATRIX(row, col));
     MATRIX(row, col) = value;
-    printf("Updated matrix[%d][%d] to %d.\n", row, col, value);
-
+    
     return 1;
 }
 
@@ -123,6 +125,58 @@ void place_player_random(int team)
     if (update_matrix_element(row, col, team) == -1)
     {
         place_player_random(team);
+    }
+    else
+    {
+        my_position[0] = row;
+        my_position[1] = col;
+    }
+}
+
+int move_player(int new_row, int new_col, int team)
+{
+    if (update_matrix_element(new_row, new_col, team))
+    {
+        printf("Player %d from Team %d moved from matrix[%d][%d] to matrix[%d][%d].\n", getpid(), team, my_position[0], my_position[1], new_row, new_col);
+        MATRIX(my_position[0], my_position[1]) = 0;
+        my_position[0] = new_row;
+        my_position[1] = new_col;
+        return 1;
+    }
+    return -1;
+}
+
+void move_player_random(int team)
+{
+    int directions[4][2] =
+    {
+        {my_position[0] - 1, my_position[1]},
+        {my_position[0] + 1, my_position[1]},
+        {my_position[0], my_position[1] - 1},
+        {my_position[0], my_position[1] + 1}
+    };
+
+    for (int i = 0; i < 4; i++)
+    {
+        int j = rand() % 4;
+        int temp[2] = {directions[i][0], directions[i][1]};
+        directions[i][0] = directions[j][0];
+        directions[i][1] = directions[j][1];
+        directions[j][0] = temp[0];
+        directions[j][1] = temp[1];
+    }
+
+    for (int i = 0; i < 4; i++)
+    {
+        int new_row = directions[i][0];
+        int new_col = directions[i][1];
+        if (new_row >= 0 && new_row < HEIGHT && new_col >= 0 && new_col < WIDTH)
+        {
+            if (move_player(new_row, new_col, team))
+            {
+                return;
+            }
+        }
     }
 }
 
@@ -163,6 +217,7 @@ void actual_play(int team)
             played_round++;
             printf("played_round: %d\n", played_round);
 
+            move_player_random(team);
 
             print_matrix();
 
