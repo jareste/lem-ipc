@@ -9,10 +9,13 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include <ft_malloc.h>
+#include <lem_ipc.h>
+#include <globals.h>
+
 #define SHM_KEY 0x1234
 #define SEM_KEY 0x5678
 #define MSG_KEY_BASE 0x9ABC
-#define MAX_TEAMS 21
 
 int shm_id, sem_id;
 int *shm_ptr = NULL;
@@ -24,7 +27,7 @@ struct message
     char mtext[128];
 };
 
-void lock_semaphore()
+static void lock_semaphore()
 {
     struct sembuf sop = {0, -1, 0};
     if (semop(sem_id, &sop, 1) == -1)
@@ -34,7 +37,7 @@ void lock_semaphore()
     }
 }
 
-void unlock_semaphore()
+static void unlock_semaphore()
 {
     struct sembuf sop = {0, 1, 0};
     if (semop(sem_id, &sop, 1) == -1)
@@ -61,6 +64,7 @@ void cleanup()
             }
         }
         shmdt(shm_ptr);
+        cleanup_shared_matrix();
     }
     else
     {
@@ -84,6 +88,7 @@ void force_cleanup()
             msgctl(msg_ids[i], IPC_RMID, NULL);
         }
     }
+    cleanup_shared_matrix();
     exit(0);
 }
 
@@ -186,8 +191,42 @@ void get_team_number(char *s, int *team)
 error:
     fprintf(stderr, "Invalid team number. Valids are [0 - 9]\n");
     exit(EXIT_FAILURE);
-
 }
+
+void init()
+{
+    shm_id = shmget(SHM_KEY, sizeof(int), IPC_CREAT | 0666);
+    if (shm_id == -1)
+    {
+        perror("shmget");
+        exit(EXIT_FAILURE);
+    }
+
+    shm_ptr = (int *)shmat(shm_id, NULL, 0);
+    if (shm_ptr == (void *)-1)
+    {
+        perror("shmat");
+        exit(EXIT_FAILURE);
+    }
+
+    sem_id = semget(SEM_KEY, 1, IPC_CREAT | 0666);
+    if (sem_id == -1)
+    {
+        perror("semget");
+        exit(EXIT_FAILURE);
+    }
+
+    if (semctl(sem_id, 0, GETVAL) == 0)
+    {
+        semctl(sem_id, 0, SETVAL, 1);
+    }
+
+    if (initialize_msg_queues() == -1)
+    {
+        cleanup();
+    }
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -221,60 +260,36 @@ int main(int argc, char *argv[])
 
     signal(SIGINT, handle_sigint);
 
-    shm_id = shmget(SHM_KEY, sizeof(int), IPC_CREAT | 0666);
-    if (shm_id == -1)
-    {
-        perror("shmget");
-        exit(EXIT_FAILURE);
-    }
-
-    shm_ptr = (int *)shmat(shm_id, NULL, 0);
-    if (shm_ptr == (void *)-1)
-    {
-        perror("shmat");
-        exit(EXIT_FAILURE);
-    }
-
-    sem_id = semget(SEM_KEY, 1, IPC_CREAT | 0666);
-    if (sem_id == -1)
-    {
-        perror("semget");
-        exit(EXIT_FAILURE);
-    }
-
-    if (semctl(sem_id, 0, GETVAL) == 0)
-    {
-        semctl(sem_id, 0, SETVAL, 1);
-    }
-
-    if (initialize_msg_queues() == -1)
-    {
-        cleanup();
-    }
+    init();
 
     lock_semaphore();
 
+    /* trash */
     if (*shm_ptr == 0)
     {
         printf("First process: Initializing shared resources.\n");
     }
+    /* trash */
 
     (*shm_ptr)++;
+    /* trash */
     printf("Attached. Total processes: %d\n", *shm_ptr);
-
+    /* trash */
     unlock_semaphore();
 
+    /* trash */
     printf("Joined team %d\n", team);
+    /* trash */
 
+    /* trash */
     char join_message[128];
     snprintf(join_message, sizeof(join_message), "Process %d has joined the team.", getpid());
     send_message(team, join_message, 1);
+    /* trash */
 
-    while (1)
-    {
-        sleep(1);
-        receive_message(team, 1);
-    }
+    printf("Joining team %d\n", team);
+
+    play_game(team);
 
     return 0;
 }

@@ -3,13 +3,13 @@ NAME = lem-ipc
 #########
 RM = rm -rf
 CC = cc
-CFLAGS = -Werror -Wextra -Wall
+CFLAGS = -Werror -Wextra -Wall -g -fsanitize=address
 LDFLAGS = -lm
 RELEASE_CFLAGS = $(CFLAGS) -DNDEBUG
 #########
 
 #########
-FILES = main ft_malloc ft_list 
+FILES = main ft_malloc ft_list game 
 
 SRC = $(addsuffix .c, $(FILES))
 
