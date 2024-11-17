@@ -291,5 +291,7 @@ int main(int argc, char *argv[])
 
     play_game(team);
 
+    cleanup();
+
     return 0;
 }

@@ -5,6 +5,7 @@
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <globals.h>
+#include <math.h>
 
 #define SHM_MATRIX_KEY 0x56789
 
@@ -20,6 +21,7 @@ static int *team_members[MAX_TEAMS] = {NULL};
 static int shm_matrix_id;
 static int *shared_matrix;
 static int my_position[2];
+static int game_shm_id;
 #define MATRIX(row, col) (shared_matrix[(row) * WIDTH + (col)])
 
 static void lock_semaphore()
@@ -135,7 +137,7 @@ void place_player_random(int team)
 
 int move_player(int new_row, int new_col, int team)
 {
-    if (update_matrix_element(new_row, new_col, team))
+    if (update_matrix_element(new_row, new_col, team) == 1)
     {
         printf("Player %d from Team %d moved from matrix[%d][%d] to matrix[%d][%d].\n", getpid(), team, my_position[0], my_position[1], new_row, new_col);
         MATRIX(my_position[0], my_position[1]) = 0;
@@ -146,16 +148,17 @@ int move_player(int new_row, int new_col, int team)
     return -1;
 }
 
-void move_player_random(int team)
+void move_player_one_square_random(int team)
 {
-    int directions[4][2] =
-    {
-        {my_position[0] - 1, my_position[1]},
-        {my_position[0] + 1, my_position[1]},
-        {my_position[0], my_position[1] - 1},
-        {my_position[0], my_position[1] + 1}
+    // Define the possible directions (up, down, left, right)
+    int directions[4][2] = {
+        {-1, 0}, // Up
+        {1, 0},  // Down
+        {0, -1}, // Left
+        {0, 1}   // Right
     };
 
+    // Shuffle the directions array to randomize movement
     for (int i = 0; i < 4; i++)
     {
         int j = rand() % 4;
@@ -166,94 +169,252 @@ void move_player_random(int team)
         directions[j][1] = temp[1];
     }
 
+    // Attempt to move in each direction until a valid move is found
     for (int i = 0; i < 4; i++)
     {
-        int new_row = directions[i][0];
-        int new_col = directions[i][1];
+        int new_row = my_position[0] + directions[i][0];
+        int new_col = my_position[1] + directions[i][1];
+
+        // Ensure the move is within bounds and the target position is empty
         if (new_row >= 0 && new_row < HEIGHT && new_col >= 0 && new_col < WIDTH)
         {
-            if (move_player(new_row, new_col, team))
+            if (MATRIX(new_row, new_col) == 0)
             {
+                // Move the player to the new position
+                MATRIX(my_position[0], my_position[1]) = 0; // Clear current position
+                MATRIX(new_row, new_col) = team;            // Mark new position with the team
+                my_position[0] = new_row;
+                my_position[1] = new_col;
+
+                printf("Player %d from Team %d moved to [%d, %d].\n", getpid(), team, new_row, new_col);
                 return;
             }
         }
     }
+
+    // If no valid move is found, the player stays in their current position
+    printf("Player %d from Team %d could not move.\n", getpid(), team);
 }
+
+
+int manhattan_distance(int x1, int y1, int x2, int y2)
+{
+    return abs(x1 - x2) + abs(y1 - y2);
+}
+
+void move_towards_nearest_opponent(int team)
+{
+    int nearest_distance = WIDTH * HEIGHT;
+    int target_row = -1, target_col = -1;
+
+    for (int r = 0; r < HEIGHT; r++)
+    {
+        for (int c = 0; c < WIDTH; c++)
+        {
+            if (MATRIX(r, c) != 0 && MATRIX(r, c) != team)
+            {
+                int distance = manhattan_distance(my_position[0], my_position[1], r, c);
+                if (distance < nearest_distance)
+                {
+                    nearest_distance = distance;
+                    target_row = r;
+                    target_col = c;
+                }
+            }
+        }
+    }
+
+    if (target_row == -1 || target_col == -1)
+    {
+        // No opponents found, stay in the same position
+        printf("No opponents nearby for Team %d at [%d, %d].\n", team, my_position[0], my_position[1]);
+        return;
+    }
+
+    // Determine the direction to move
+    int new_row = my_position[0];
+    int new_col = my_position[1];
+
+    if (my_position[0] < target_row)
+    {
+        new_row++; // Move down
+    }
+    else if (my_position[0] > target_row)
+    {
+        new_row--; // Move up
+    }
+    else if (my_position[1] < target_col)
+    {
+        new_col++; // Move right
+    }
+    else if (my_position[1] > target_col)
+    {
+        new_col--; // Move left
+    }
+
+    // Try to move the player
+    if (move_player(new_row, new_col, team) == 1)
+    {
+        printf("Player %d from Team %d moved towards opponent at [%d, %d].\n", getpid(), team, target_row, target_col);
+    }
+    else
+    {
+        move_player_one_square_random(team);
+        // printf("Player %d from Team %d failed to move to [%d, %d].\n", getpid(), team, new_row, new_col);
+    }
+}
+
+int have_i_lost()
+{
+    if (MATRIX(my_position[0], my_position[1]) == 0)
+    {
+        printf("Player %d from Team has lost.\n", getpid());
+        printf("player was at [%d, %d]\n", my_position[0], my_position[1]);
+        return 1;
+    }
+
+    return -1;
+}
+
+void check_captured_enemy(int team)
+{
+    int enemy_team;
+    int my_team;
+
+    /* x+ */
+    if (my_position[0] < HEIGHT - 2)
+    {
+        enemy_team = MATRIX(my_position[0] + 1, my_position[1]);
+        my_team = MATRIX(my_position[0] + 2, my_position[1]);
+        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
+        {
+            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] + 1, my_position[1]);
+            MATRIX(my_position[0] + 1, my_position[1]) = 0;
+        }
+    }
+
+    /* x- */
+    if (my_position[0] > 1)
+    {
+        enemy_team = MATRIX(my_position[0] - 1, my_position[1]);
+        my_team = MATRIX(my_position[0] - 2, my_position[1]);
+        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
+        {
+            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] - 1, my_position[1]);
+            MATRIX(my_position[0] - 1, my_position[1]) = 0;
+        }
+    }
+
+    /* y+ */
+    if (my_position[1] < WIDTH - 2)
+    {
+        enemy_team = MATRIX(my_position[0], my_position[1] + 1);
+        my_team = MATRIX(my_position[0], my_position[1] + 2);
+        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
+        {
+            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0], my_position[1] + 1);
+            MATRIX(my_position[0], my_position[1] + 1) = 0;
+        }
+    }
+
+    /* y- */
+    if (my_position[1] > 1)
+    {
+        enemy_team = MATRIX(my_position[0], my_position[1] - 1);
+        my_team = MATRIX(my_position[0], my_position[1] - 2);
+        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
+        {
+            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0], my_position[1] - 1);
+            MATRIX(my_position[0], my_position[1] - 1) = 0;
+        }
+    }
+
+}
+
 
 void actual_play(int team)
 {
     int played_round = 0;
-    printf("Player %d from Team %d has joined the game.\n", getpid(), team);
+    int original_team = team;
+
+    // Register the player in the team if not already registered
+    lock_semaphore();
+    int registered = 0;
+    for (int i = 0; i < MAX_PROCESSES; i++)
+    {
+        if (team_members[team][i] == getpid())
+        {
+            registered = 1;
+            break;
+        }
+    }
+
+    if (!registered)
+    {
+        for (int i = 0; i < MAX_PROCESSES; i++)
+        {
+            if (team_members[team][i] == 0)
+            {
+                team_members[team][i] = getpid();
+                break;
+            }
+        }
+    }
+    unlock_semaphore();
 
     while (1)
     {
         lock_semaphore();
 
-        int registered = 0;
-        for (int i = 0; i < MAX_PROCESSES; i++)
+        if (have_i_lost() == 1)
         {
-            if (team_members[team][i] == getpid())
-            {
-                registered = 1;
-                break;
-            }
-        }
+            printf("Player %d from Team %d has lost.\n", getpid(), team);
+            unlock_semaphore();
 
-        if (!registered)
-        {
-            for (int i = 0; i < MAX_PROCESSES; i++)
+            original_team = game->current_team;
+            do
             {
-                if (team_members[team][i] == 0)
+                game->current_team = (game->current_team + 1) % MAX_TEAMS;
+
+                if (game->current_team == original_team)
                 {
-                    team_members[team][i] = getpid();
                     break;
                 }
-            }
+            } while (team_members[game->current_team][0] == 0);
+            break;
         }
 
-        printf("current_team: %d\n", game->current_team);
         if (game->current_team == team)
         {
             played_round++;
             printf("played_round: %d\n", played_round);
 
-            move_player_random(team);
-
             print_matrix();
+            move_towards_nearest_opponent(team);
+            check_captured_enemy(team);
 
-            do {
-                game->current_team = (game->current_team + 1) % MAX_TEAMS;
-            } while (team_members[game->current_team][0] == 0); // Skip empty teams
-
-            for (int i = 0; i < MAX_PROCESSES; i++)
+            original_team = game->current_team;
+            do
             {
-                if (team_members[game->current_team][i] != 0)
+                game->current_team = (game->current_team + 1) % MAX_TEAMS;
+
+                if (game->current_team == original_team)
                 {
-                    game->current_player_pid = team_members[game->current_team][i];
                     break;
                 }
-            }
+            } while (team_members[game->current_team][0] == 0);
 
-            if (game->current_team == 0)
-            {
-                game->round_number++;
-            }
-
-        }
-        else
-        {
-            // printf("Player %d from Team %d is waiting for their turn.\n", getpid(), team);
-            // printf("Current team: %d, Current player: %d\n", game->current_team, game->current_player_pid);
         }
 
         unlock_semaphore();
-        sleep(1);
+        usleep(100000); // Prevent busy waiting
     }
 }
 
+
 void play_game(int team)
 {
-    game = (struct game_state *)shmat(shm_id, NULL, 0);
+    game = (struct game_state *)shmat(game_shm_id, NULL, 0);
     if (game == (void *)-1)
     {
         perror("shmat");
@@ -268,9 +429,11 @@ void play_game(int team)
     printf("Game started. Team %d is playing.\n", team);
 
     lock_semaphore();
-    if (*shm_ptr == 0)
+    printf("*shm_ptr: %d\n", *shm_ptr);
+    if (*shm_ptr == 1)
     {
-        game->current_team = 0;
+        printf("#################################\n");
+        game->current_team = team;
         game->current_player_pid = 0;
         game->round_number = 1;
 
