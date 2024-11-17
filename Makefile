@@ -1,4 +1,4 @@
-NAME = taskmaster
+NAME = lem-ipc
 
 #########
 RM = rm -rf
