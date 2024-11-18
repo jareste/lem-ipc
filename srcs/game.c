@@ -7,6 +7,7 @@
 #include <globals.h>
 #include <math.h>
 #include <string.h>
+#include <lem_ipc.h>
 
 #define SHM_GAME_KEY 0xf001
 #define SHM_MATRIX_KEY 0x56789
@@ -156,6 +157,8 @@ void print_matrix()
 
 void restore_player_position()
 {
+    if (my_position[0] < 0 || my_position[0] >= HEIGHT || my_position[1] < 0 || my_position[1] >= WIDTH)
+        return;
     printf("restoring my position [%d][%d]\n", my_position[0], my_position[1]);
     MATRIX(my_position[0], my_position[1]) = 0;
 }
@@ -175,13 +178,41 @@ void cleanup_shared_matrix()
     printf("Shared matrix cleaned up.\n");
 }
 
+void place_player_first_spot(int team)
+{
+    for (int r = 0; r < HEIGHT; r++)
+    {
+        for (int c = 0; c < WIDTH; c++)
+        {
+            if (MATRIX(r, c) == 0)
+            {
+                MATRIX(r,c) = team;
+                my_position[0] = r;
+                my_position[1] = c;
+                return;
+            }
+        }
+    }
+
+    my_position[0] = -1;
+    my_position[1] = -1;
+    fprintf(stderr, "Unable to set an initial position for player...\n");
+    cleanup();
+    exit(EXIT_FAILURE);
+}
+
 void place_player_random(int team)
 {
+    static int tries = 0;
     int row = rand() % HEIGHT;
     int col = rand() % WIDTH;
     if (update_matrix_element(row, col, team) == -1)
     {
-        place_player_random(team);
+        tries++;
+        if (tries == 5)
+            place_player_first_spot(team);
+        else
+            place_player_random(team);
     }
     else
     {
@@ -476,16 +507,16 @@ void actual_play(int team)
 
         if (have_i_won(team) == 1)
         {
-            printf("Player %d from Team %d has won!\n", getpid(), team);
             print_matrix();
+            printf("Player %d from Team %d has won!\n", getpid(), team);
             unlock_semaphore();
             break;
         }
 
         if (have_i_lost() == 1)
         {
-            printf("Player %d from Team %d has lost.\n", getpid(), team);
             print_matrix();
+            printf("Player %d from Team %d has lost.\n", getpid(), team);
             unlock_semaphore();
             break;
         }
