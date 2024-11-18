@@ -3,8 +3,8 @@
 
 #define MAX_TEAMS 10
 #define MAX_PROCESSES 100
-#define WIDTH 3
-#define HEIGHT 3
+#define WIDTH 15
+#define HEIGHT 15
 
 extern int shm_id;
 extern int sem_id;
