@@ -1,4 +1,4 @@
-NAME = lem-ipc
+NAME = lemipc
 
 #########
 RM = rm -rf
@@ -55,6 +55,15 @@ clean:
 		echo ".gitignore already exists."; \
 	fi
 
+MAN_DIR = /usr/local/share/man/man1
+MAN_PAGE = lemipc.1
+
+install: $(NAME)
+	install -d $(DESTDIR)$(MAN_DIR)
+	install -m 644 $(MAN_PAGE) $(DESTDIR)$(MAN_DIR)
+
+uninstall:
+	rm -f $(DESTDIR)$(MAN_DIR)/$(MAN_PAGE)
 
 fclean: clean
 	$(RM) $(NAME)
