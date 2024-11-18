@@ -5,5 +5,6 @@ void play_game(int team);
 void cleanup_shared_matrix();
 void restore_player_position();
 void cleanup();
+void detach_matrix();
 
 #endif

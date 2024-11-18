@@ -47,6 +47,14 @@ static void unlock_semaphore()
     }
 }
 
+void detach_matrix()
+{
+    if (shmdt(shared_matrix) == -1)
+    {
+        perror("shmdt (matrix)");
+    }
+}
+
 void init_shared_matrix()
 {
     size_t matrix_size = WIDTH * HEIGHT * sizeof(int);
@@ -155,29 +163,54 @@ void print_matrix()
     fflush(stdout);
 }
 
-void restore_player_position()
+void restore_player_position(int team)
 {
     if (my_position[0] < 0 || my_position[0] >= HEIGHT || my_position[1] < 0 || my_position[1] >= WIDTH)
         return;
-    printf("restoring my position [%d][%d]\n", my_position[0], my_position[1]);
+
     lock_semaphore();
-    MATRIX(my_position[0], my_position[1]) = 0;
+    printf("Restoring position [%d][%d] for Team %d.\n", my_position[0], my_position[1], team);
+
+    if (MATRIX(my_position[0], my_position[1]) == team)
+    {
+        MATRIX(my_position[0], my_position[1]) = 0;
+        printf("Position [%d][%d] restored.\n", my_position[0], my_position[1]);
+    }
+    else
+    {
+        printf("Position [%d][%d] not restored: occupied by another team or empty.\n", my_position[0], my_position[1]);
+    }
+
     unlock_semaphore();
 }
 
+
 void cleanup_shared_matrix()
 {
+    struct shmid_ds shm_info;
+
     if (shmdt(shared_matrix) == -1)
     {
         perror("shmdt (matrix)");
     }
 
-    if (shmctl(shm_matrix_id, IPC_RMID, NULL) == -1)
+    if (shmctl(shm_matrix_id, IPC_STAT, &shm_info) == 0 && shm_info.shm_nattch == 0)
     {
-        perror("shmctl (matrix)");
+        if (shmctl(shm_matrix_id, IPC_RMID, NULL) == -1)
+        {
+            perror("shmctl (matrix)");
+        }
+        else
+        {
+            printf("Shared matrix removed (ID: %d).\n", shm_matrix_id);
+        }
+    }
+    else
+    {
+        printf("Shared matrix still in use by other processes (ID: %d).\n", shm_matrix_id);
     }
 
-    printf("Shared matrix cleaned up.\n");
+    printf("Shared matrix cleanup complete.\n");
 }
 
 void place_player_first_spot(int team)
@@ -199,6 +232,7 @@ void place_player_first_spot(int team)
     my_position[0] = -1;
     my_position[1] = -1;
     fprintf(stderr, "Unable to set an initial position for player...\n");
+    unlock_semaphore();
     cleanup();
     exit(EXIT_FAILURE);
 }

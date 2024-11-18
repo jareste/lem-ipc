@@ -20,6 +20,8 @@
 int shm_id, sem_id;
 int *shm_ptr = NULL;
 int msg_ids[MAX_TEAMS] = {0};
+static int team = 0;
+
 
 struct message
 {
@@ -54,35 +56,62 @@ void cleanup()
     if (*shm_ptr == 1)
     {
         printf("\nLast process: Cleaning up resources.\n");
-        shmctl(shm_id, IPC_RMID, NULL);
-        semctl(sem_id, 0, IPC_RMID);
+        
+        if (shmctl(shm_id, IPC_RMID, NULL) == -1)
+        {
+            perror("shmctl (game)");
+        }
+
+        if (semctl(sem_id, 0, IPC_RMID) == -1)
+        {
+            perror("semctl");
+        }
+
         for (int i = 0; i < MAX_TEAMS; i++)
         {
             if (msg_ids[i] != 0)
             {
-                msgctl(msg_ids[i], IPC_RMID, NULL);
+                if (msgctl(msg_ids[i], IPC_RMID, NULL) == -1)
+                {
+                    perror("msgctl");
+                }
             }
         }
-        shmdt(shm_ptr);
+
         cleanup_shared_matrix();
+
+        printf("All resources cleaned up.\n");
     }
     else
     {
         (*shm_ptr)--;
         printf("\nDetached. Remaining processes: %d\n", *shm_ptr);
-        shmdt(shm_ptr);
+
         unlock_semaphore();
-        restore_player_position();
+        restore_player_position(team);
+        lock_semaphore();
     }
+
+    if (shmdt(shm_ptr) == -1)
+    {
+        perror("shmdt (game)");
+    }
+
+    // detach_matrix();
+
+    unlock_semaphore();
     exit(0);
 }
+
 
 void force_cleanup()
 {
     printf("Force cleaning up all shared resources.\n");
     cleanup_shared_matrix();
-    shmctl(shm_id, IPC_RMID, NULL);
-    semctl(sem_id, 0, IPC_RMID);
+    if (shm_id != -1)
+        shmctl(shm_id, IPC_RMID, NULL);
+    if (sem_id != -1)
+        semctl(sem_id, 0, IPC_RMID);
     for (int i = 0; i < MAX_TEAMS; i++)
     {
         if (msg_ids[i] != 0)
@@ -95,8 +124,9 @@ void force_cleanup()
 
 void handle_sigint(int sig)
 {
-    (void)sig; // Suppress unused warning
+    (void)sig;
     cleanup();
+    exit(0);
 }
 
 int initialize_msg_queues()
@@ -231,8 +261,6 @@ void init()
 
 int main(int argc, char *argv[])
 {
-    int team = 0;
-
     if (argc < 2 || strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
     {
         fprintf(stderr, "Usage: %s [--clean] [team]\n", argv[0]);
@@ -248,10 +276,13 @@ int main(int argc, char *argv[])
             msg_ids[i] = msgget(MSG_KEY_BASE + i, 0666);
         }
 
-        if (shm_id == -1 || sem_id == -1)
+        if (shm_id == -1)
         {
-            perror("Error accessing shared resources");
-            exit(EXIT_FAILURE);
+            fprintf(stderr, "Shared memory not found.\n");
+        }
+        if (sem_id == -1)
+        {
+            fprintf(stderr, "Semaphore not found.\n");
         }
 
         force_cleanup();
