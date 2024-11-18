@@ -563,7 +563,7 @@ void actual_play(int team)
 
         if (have_i_lost() == 1)
         {
-            print_matrix();
+            // print_matrix();
             printf("Player %d from Team %d has lost.\n", getpid(), team);
             unlock_semaphore();
             break;
