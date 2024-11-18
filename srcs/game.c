@@ -443,12 +443,7 @@ void actual_play(int team)
             break;
         }
 
-        if (move_towards_nearest_opponent(team) == 2 && game_started == 1)
-        {
-            printf("Player %d from Team %d has won!\n", getpid(), team);
-            unlock_semaphore();
-            break;
-        }
+        move_towards_nearest_opponent(team);
         check_captured_enemy(team);
         print_matrix();
 
