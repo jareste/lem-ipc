@@ -6,6 +6,7 @@
 #include <sys/sem.h>
 #include <globals.h>
 #include <math.h>
+#include <string.h>
 
 #define SHM_MATRIX_KEY 0x56789
 
@@ -13,7 +14,7 @@ struct game_state
 {
     int current_team;
     int current_player_pid;
-    int round_number;
+    int game_started;
 };
 
 static struct game_state *game = NULL;
@@ -152,6 +153,11 @@ void print_matrix()
     fflush(stdout);
 }
 
+void restore_player_position()
+{
+    printf("restoring my position [%d][%d]\n", my_position[0], my_position[1]);
+    MATRIX(my_position[0], my_position[1]) = 0;
+}
 
 void cleanup_shared_matrix()
 {
@@ -386,6 +392,38 @@ void check_captured_enemy(int team)
 
 }
 
+void has_game_started()
+{
+    int team_has_players[MAX_TEAMS];
+    int total_teams = 0;
+
+    if (game->game_started == 1)
+        return;
+
+    memset(team_has_players, 0, sizeof(team_has_players));
+
+    for (int r = 0; r < HEIGHT; r++)
+    {
+        for (int c = 0; c < WIDTH; c++)
+        {
+            if (MATRIX(r, c) != 0)
+            {
+                team_has_players[MATRIX(r, c)] += 1;
+                if (team_has_players[MATRIX(r, c)] == 1)
+                {
+                    total_teams++;
+                }
+                if (total_teams > 1)
+                {
+                    game->game_started = 1;
+                    return;
+                }
+            }
+        }
+    }
+    return;
+}
+
 void register_player(int team)
 {
     lock_semaphore();
@@ -410,26 +448,32 @@ void register_player(int team)
             }
         }
     }
+
+    has_game_started();
+
     unlock_semaphore();
 }
 
 void actual_play(int team)
 {
-    int game_started = 0;
     register_player(team);
 
     while (1)
     {
-        if (game->current_team != team)
-        {
-            game_started = 1;
-        }
-
         lock_semaphore();
+
+        if (game->game_started == 0)
+        {
+            print_matrix();
+            printf("Waiting for game to start...\n");
+            unlock_semaphore();
+            usleep(50000);
+            continue;            
+        }
 
         game->current_team = team;
 
-        if (have_i_won(team) == 1 && game_started == 1)
+        if (have_i_won(team) == 1)
         {
             printf("Player %d from Team %d has won!\n", getpid(), team);
             unlock_semaphore();
@@ -449,7 +493,7 @@ void actual_play(int team)
 
         unlock_semaphore();
         /* Not really needed but this way we will let the CPU relax a bit. */
-        usleep(20000);
+        usleep(100000);
     }
 }
 
@@ -472,7 +516,7 @@ void play_game(int team)
     {
         game->current_team = team;
         game->current_player_pid = 0;
-        game->round_number = 1;
+        game->game_started = 0;
 
         for (int i = 0; i < MAX_TEAMS; i++)
         {

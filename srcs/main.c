@@ -71,6 +71,7 @@ void cleanup()
         (*shm_ptr)--;
         printf("\nDetached. Remaining processes: %d\n", *shm_ptr);
         shmdt(shm_ptr);
+        restore_player_position();
         unlock_semaphore();
     }
     exit(0);
@@ -79,6 +80,7 @@ void cleanup()
 void force_cleanup()
 {
     printf("Force cleaning up all shared resources.\n");
+    cleanup_shared_matrix();
     shmctl(shm_id, IPC_RMID, NULL);
     semctl(sem_id, 0, IPC_RMID);
     for (int i = 0; i < MAX_TEAMS; i++)
@@ -88,7 +90,6 @@ void force_cleanup()
             msgctl(msg_ids[i], IPC_RMID, NULL);
         }
     }
-    cleanup_shared_matrix();
     exit(0);
 }
 
