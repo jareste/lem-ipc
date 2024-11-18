@@ -422,7 +422,55 @@ void check_captured_enemy(int team)
         }
     }
 
+    /* x+, y+ */
+    if (my_position[0] < HEIGHT - 2 && my_position[1] < WIDTH - 2)
+    {
+        enemy_team = MATRIX(my_position[0] + 1, my_position[1] + 1);
+        my_team = MATRIX(my_position[0] + 2, my_position[1] + 2);
+        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
+        {
+            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] + 1, my_position[1] + 1);
+            MATRIX(my_position[0] + 1, my_position[1] + 1) = 0;
+        }
+    }
+
+    /* x+, y- */
+    if (my_position[0] < HEIGHT - 2 && my_position[1] > 1)
+    {
+        enemy_team = MATRIX(my_position[0] + 1, my_position[1] - 1);
+        my_team = MATRIX(my_position[0] + 2, my_position[1] - 2);
+        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
+        {
+            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] + 1, my_position[1] - 1);
+            MATRIX(my_position[0] + 1, my_position[1] - 1) = 0;
+        }
+    }
+
+    /* x-, y+ */
+    if (my_position[0] > 1 && my_position[1] < WIDTH - 2)
+    {
+        enemy_team = MATRIX(my_position[0] - 1, my_position[1] + 1);
+        my_team = MATRIX(my_position[0] - 2, my_position[1] + 2);
+        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
+        {
+            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] - 1, my_position[1] + 1);
+            MATRIX(my_position[0] - 1, my_position[1] + 1) = 0;
+        }
+    }
+
+    /* x-, y- */
+    if (my_position[0] > 1 && my_position[1] > 1)
+    {
+        enemy_team = MATRIX(my_position[0] - 1, my_position[1] - 1);
+        my_team = MATRIX(my_position[0] - 2, my_position[1] - 2);
+        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
+        {
+            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] - 1, my_position[1] - 1);
+            MATRIX(my_position[0] - 1, my_position[1] - 1) = 0;
+        }
+    }
 }
+
 
 void has_game_started()
 {
