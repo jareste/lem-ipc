@@ -160,7 +160,9 @@ void restore_player_position()
     if (my_position[0] < 0 || my_position[0] >= HEIGHT || my_position[1] < 0 || my_position[1] >= WIDTH)
         return;
     printf("restoring my position [%d][%d]\n", my_position[0], my_position[1]);
+    lock_semaphore();
     MATRIX(my_position[0], my_position[1]) = 0;
+    unlock_semaphore();
 }
 
 void cleanup_shared_matrix()
@@ -203,16 +205,23 @@ void place_player_first_spot(int team)
 
 void place_player_random(int team)
 {
-    static int tries = 0;
-    int row = rand() % HEIGHT;
-    int col = rand() % WIDTH;
-    if (update_matrix_element(row, col, team) == -1)
+    int tries = 0;
+    int ret = 0;
+    int row;
+    int col;
+
+    while (tries < 5)
     {
+        row = rand() % HEIGHT;
+        col = rand() % WIDTH;
+        ret = update_matrix_element(row, col, team);
+        if (ret == 1)
+            break;
         tries++;
-        if (tries == 5)
-            place_player_first_spot(team);
-        else
-            place_player_random(team);
+    }
+    if (ret != 1)
+    {
+        place_player_first_spot(team);
     }
     else
     {
@@ -342,9 +351,9 @@ int move_towards_nearest_opponent(int team)
     return 1;
 }
 
-int have_i_lost()
+int have_i_lost(int team)
 {
-    if (MATRIX(my_position[0], my_position[1]) == 0)
+    if (MATRIX(my_position[0], my_position[1]) != team)
     {
         printf("player was at [%d, %d]\n", my_position[0], my_position[1]);
         return 1;
@@ -369,108 +378,57 @@ int have_i_won(int team)
     return 1;
 }
 
+int is_piece_surrounded(int row, int col, int team)
+{
+    if (col > 0 && col < WIDTH - 1 &&
+        MATRIX(row, col - 1) != 0 && MATRIX(row, col - 1) != team &&
+        MATRIX(row, col + 1) != 0 && MATRIX(row, col + 1) != team &&
+        MATRIX(row, col - 1) == MATRIX(row, col + 1))
+    {
+        return 1;
+    }
+
+    if (row > 0 && row < HEIGHT - 1 &&
+        MATRIX(row - 1, col) != 0 && MATRIX(row - 1, col) != team &&
+        MATRIX(row + 1, col) != 0 && MATRIX(row + 1, col) != team &&
+        MATRIX(row - 1, col) == MATRIX(row + 1, col))
+    {
+        return 1;
+    }
+
+    if (row > 0 && row < HEIGHT - 1 && col > 0 && col < WIDTH - 1)
+    {
+        if (MATRIX(row - 1, col - 1) != 0 && MATRIX(row - 1, col - 1) != team &&
+            MATRIX(row + 1, col + 1) != 0 && MATRIX(row + 1, col + 1) != team &&
+            MATRIX(row - 1, col - 1) == MATRIX(row + 1, col + 1))
+        {
+            return 1;
+        }
+        if (MATRIX(row - 1, col + 1) != 0 && MATRIX(row - 1, col + 1) != team &&
+            MATRIX(row + 1, col - 1) != 0 && MATRIX(row + 1, col - 1) != team &&
+            MATRIX(row - 1, col + 1) == MATRIX(row + 1, col - 1))
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 void check_captured_enemy(int team)
 {
-    int enemy_team;
-    int my_team;
-
-    /* x+ */
-    if (my_position[0] < HEIGHT - 2)
+    for (int r = 0; r < HEIGHT; r++)
     {
-        enemy_team = MATRIX(my_position[0] + 1, my_position[1]);
-        my_team = MATRIX(my_position[0] + 2, my_position[1]);
-        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
+        for (int c = 0; c < WIDTH; c++)
         {
-            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] + 1, my_position[1]);
-            MATRIX(my_position[0] + 1, my_position[1]) = 0;
-        }
-    }
-
-    /* x- */
-    if (my_position[0] > 1)
-    {
-        enemy_team = MATRIX(my_position[0] - 1, my_position[1]);
-        my_team = MATRIX(my_position[0] - 2, my_position[1]);
-        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
-        {
-            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] - 1, my_position[1]);
-            MATRIX(my_position[0] - 1, my_position[1]) = 0;
-        }
-    }
-
-    /* y+ */
-    if (my_position[1] < WIDTH - 2)
-    {
-        enemy_team = MATRIX(my_position[0], my_position[1] + 1);
-        my_team = MATRIX(my_position[0], my_position[1] + 2);
-        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
-        {
-            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0], my_position[1] + 1);
-            MATRIX(my_position[0], my_position[1] + 1) = 0;
-        }
-    }
-
-    /* y- */
-    if (my_position[1] > 1)
-    {
-        enemy_team = MATRIX(my_position[0], my_position[1] - 1);
-        my_team = MATRIX(my_position[0], my_position[1] - 2);
-        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
-        {
-            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0], my_position[1] - 1);
-            MATRIX(my_position[0], my_position[1] - 1) = 0;
-        }
-    }
-
-    /* x+, y+ */
-    if (my_position[0] < HEIGHT - 2 && my_position[1] < WIDTH - 2)
-    {
-        enemy_team = MATRIX(my_position[0] + 1, my_position[1] + 1);
-        my_team = MATRIX(my_position[0] + 2, my_position[1] + 2);
-        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
-        {
-            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] + 1, my_position[1] + 1);
-            MATRIX(my_position[0] + 1, my_position[1] + 1) = 0;
-        }
-    }
-
-    /* x+, y- */
-    if (my_position[0] < HEIGHT - 2 && my_position[1] > 1)
-    {
-        enemy_team = MATRIX(my_position[0] + 1, my_position[1] - 1);
-        my_team = MATRIX(my_position[0] + 2, my_position[1] - 2);
-        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
-        {
-            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] + 1, my_position[1] - 1);
-            MATRIX(my_position[0] + 1, my_position[1] - 1) = 0;
-        }
-    }
-
-    /* x-, y+ */
-    if (my_position[0] > 1 && my_position[1] < WIDTH - 2)
-    {
-        enemy_team = MATRIX(my_position[0] - 1, my_position[1] + 1);
-        my_team = MATRIX(my_position[0] - 2, my_position[1] + 2);
-        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
-        {
-            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] - 1, my_position[1] + 1);
-            MATRIX(my_position[0] - 1, my_position[1] + 1) = 0;
-        }
-    }
-
-    /* x-, y- */
-    if (my_position[0] > 1 && my_position[1] > 1)
-    {
-        enemy_team = MATRIX(my_position[0] - 1, my_position[1] - 1);
-        my_team = MATRIX(my_position[0] - 2, my_position[1] - 2);
-        if ((enemy_team != 0) && (my_team == team) && (enemy_team != team))
-        {
-            printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, my_position[0] - 1, my_position[1] - 1);
-            MATRIX(my_position[0] - 1, my_position[1] - 1) = 0;
+            if (MATRIX(r, c) == team && is_piece_surrounded(r, c, team))
+            {
+                printf("Player %d from Team %d captured an enemy at [%d, %d].\n", getpid(), team, r, c);
+                MATRIX(r, c) = 0;
+            }
         }
     }
 }
-
 
 void has_game_started()
 {
@@ -551,20 +509,20 @@ void actual_play(int team)
             continue;            
         }
 
-        game->current_team = team;
-
-        if (have_i_won(team) == 1)
+        if (have_i_lost(team) == 1)
         {
-            print_matrix();
-            printf("Player %d from Team %d has won!\n", getpid(), team);
+            // print_matrix();
+            printf("Player %d from Team %d has lost.\n", getpid(), team);
+            my_position[0] = -1;
+            my_position[1] = -1;
             unlock_semaphore();
             break;
         }
 
-        if (have_i_lost() == 1)
+        if (have_i_won(team) == 1)
         {
             // print_matrix();
-            printf("Player %d from Team %d has lost.\n", getpid(), team);
+            printf("Player %d from Team %d has won!\n", getpid(), team);
             unlock_semaphore();
             break;
         }
@@ -619,7 +577,9 @@ void play_game(int team)
 
     init_shared_matrix();
 
+    lock_semaphore();
     place_player_random(team);
+    unlock_semaphore();
 
     actual_play(team);
 }

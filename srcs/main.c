@@ -71,8 +71,8 @@ void cleanup()
         (*shm_ptr)--;
         printf("\nDetached. Remaining processes: %d\n", *shm_ptr);
         shmdt(shm_ptr);
-        restore_player_position();
         unlock_semaphore();
+        restore_player_position();
     }
     exit(0);
 }
