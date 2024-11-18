@@ -8,6 +8,7 @@
 #include <math.h>
 #include <string.h>
 
+#define SHM_GAME_KEY 0xf001
 #define SHM_MATRIX_KEY 0x56789
 
 struct game_state
@@ -476,6 +477,7 @@ void actual_play(int team)
         if (have_i_won(team) == 1)
         {
             printf("Player %d from Team %d has won!\n", getpid(), team);
+            print_matrix();
             unlock_semaphore();
             break;
         }
@@ -483,6 +485,7 @@ void actual_play(int team)
         if (have_i_lost() == 1)
         {
             printf("Player %d from Team %d has lost.\n", getpid(), team);
+            print_matrix();
             unlock_semaphore();
             break;
         }
@@ -493,12 +496,19 @@ void actual_play(int team)
 
         unlock_semaphore();
         /* Not really needed but this way we will let the CPU relax a bit. */
-        usleep(100000);
+        usleep(10000);
     }
 }
 
 void play_game(int team)
 {
+    game_shm_id = shmget(SHM_GAME_KEY, sizeof(int), IPC_CREAT | 0666);
+    if (game_shm_id == -1)
+    {
+        perror("shmget");
+        exit(EXIT_FAILURE);
+    }
+
     game = (struct game_state *)shmat(game_shm_id, NULL, 0);
     if (game == (void *)-1)
     {
