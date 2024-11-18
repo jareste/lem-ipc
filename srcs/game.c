@@ -315,6 +315,22 @@ int have_i_lost()
     return -1;
 }
 
+int have_i_won(int team)
+{
+    for (int r = 0; r < HEIGHT; r++)
+    {
+        for (int c = 0; c < WIDTH; c++)
+        {
+            if (MATRIX(r, c) != 0 && MATRIX(r, c) != team)
+            {
+                return -1;
+            }
+        }
+    }
+
+    return 1;
+}
+
 void check_captured_enemy(int team)
 {
     int enemy_team;
@@ -412,6 +428,13 @@ void actual_play(int team)
         lock_semaphore();
 
         game->current_team = team;
+
+        if (have_i_won(team) == 1 && game_started == 1)
+        {
+            printf("Player %d from Team %d has won!\n", getpid(), team);
+            unlock_semaphore();
+            break;
+        }
 
         if (have_i_lost() == 1)
         {
